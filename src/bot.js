@@ -1,6 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
-const { trades, getRandomTrade, getTopGainer, getTopLoser, addTrade, getLastTrades, getTotalStats, getDCAStatus, getPortfolio } = require('./tradeData');
-const { generateTradeCard } = require('./tradeCard');
+const { trades, getRandomTrade, getTopGainer, getTopLoser, addTrade, getLastTrades, getTotalStats, getDCAStatus, getPortfolio } = require('./tradedata'); // Adjusted to lowercase
+const { generateTradeCard } = require('./tradecard');
 const { format } = require('date-fns');
 const fs = require('fs').promises;
 const { createCanvas } = require('@napi-rs/canvas');
