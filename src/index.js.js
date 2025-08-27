@@ -1,27 +1,30 @@
-require('dotenv').config();
-console.log('Loading dotenv...');
-
+require('dotenv').config(); // Load .env file
+const express = require('express');
 const { setupBot } = require('./bot');
-console.log('Bot module loaded...');
 
-const botToken = process.env.TELEGRAM_BOT_TOKEN;
-const chatId = process.env.CHAT_ID;
-console.log('Env variables loaded:', { botToken: !!botToken, chatId: !!chatId });
+const app = express();
+const port = process.env.PORT || 3000;
 
-if (!botToken || !chatId) {
-  console.error('Missing TELEGRAM_BOT_TOKEN or CHAT_ID in .env file');
+app.get('/', (req, res) => {
+  res.send('Bot is alive!');
+});
+
+const bot = setupBot(process.env.TELEGRAM_BOT_TOKEN, process.env.CHAT_ID);
+bot.launch().then(() => {
+  console.log('Bot launched successfully!');
+}).catch((err) => {
+  console.error('Bot launch failed:', err);
   process.exit(1);
-}
+});
 
-const bot = setupBot(botToken, chatId);
-console.log('Bot setup completed...');
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
 
-bot.launch()
-  .then(() => console.log('Sadju AI Trading Bot v1.3 is running...'))
-  .catch(err => {
-    console.error('Launch failed, retrying in 5 seconds:', err);
-    setTimeout(() => bot.launch(), 5000);
-  });
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});

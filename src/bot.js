@@ -1,5 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
-const { trades, getRandomTrade, getTopGainer, getTopLoser, addTrade, getLastTrades, getTotalStats, getDCAStatus, getPortfolio } = require('./tradedata'); // Adjusted to lowercase
+const { trades, getRandomTrade, getTopGainer, getTopLoser, addTrade, getLastTrades, getTotalStats, getDCAStatus, getPortfolio, getSolanaPrice, analyzeMarket } = require('./tradedata');
 const { generateTradeCard } = require('./tradecard');
 const { format } = require('date-fns');
 const fs = require('fs').promises;
@@ -12,9 +12,10 @@ function setupBot(botToken, chatId) {
   const maxLossLimit = parseFloat(process.env.MAX_LOSS_LIMIT) || -200;
   const slippageTolerance = parseFloat(process.env.SLIPPAGE_TOLERANCE) || 0.05;
   let lastAlertTime = 0;
-  let profitTarget = 20; // Default 20% profit target
+  let profitTarget = 20;
+  const insiderUsernames = ['insider1', 'insider2']; // Add real usernames here
+  const insiderTrades = new Map(); // Track insider-initiated trades
 
-  // Retry logic for Telegram initialization
   async function initializeBot() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -24,7 +25,7 @@ function setupBot(botToken, chatId) {
       } catch (err) {
         console.error(`Initialization attempt ${attempt + 1} failed:`, err);
         if (attempt === 2) throw err;
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
   }
@@ -36,12 +37,12 @@ function setupBot(botToken, chatId) {
 
   bot.start((ctx) => {
     if (ctx.chat.id.toString() !== chatId) return ctx.reply('Unauthorized 🚫');
-    ctx.reply('*Welcome to Sadju AI Trading Bot v1.3! 🚀💼*\nLive memecoin trading with DCA & SL. Use /help for commands.', { parse_mode: 'Markdown' });
+    ctx.reply('*Welcome to Sadju AI Trading Bot v1.4! 🚀💼*\nEnhanced with daily reports, insider trades, and market analysis. Use /help for commands.', { parse_mode: 'Markdown' });
   });
 
   bot.command('help', (ctx) => {
     if (ctx.chat.id.toString() !== chatId) return ctx.reply('Unauthorized 🚫');
-    ctx.reply('*Commands: 🚀*\n/start - Welcome 🎉\n/help - This help 📋\n/randomtrade - Trade card 📊\n/topgainer - Best trade 🥇\n/toploser - Worst trade 🥉\n/history - Last 5 trades ⏳\n/pricealert <coin> <price> - Set alert 🔔\n/settings - Adjust settings ⚙️\n/stats - PnL stats 💹\n/trend - Trend score 📈\n/risk - Risk level ⚠️\n/log - Last 10 logs 📝\n/livetoggle - Switch mode 🔄\n/dca - DCA status 📉\n/portfolio - Holdings 💰\n/chart - PnL chart 📉', { parse_mode: 'Markdown' });
+    ctx.reply('*Commands: 🚀*\n/start - Welcome 🎉\n/help - This help 📋\n/randomtrade - Trade card 📊\n/topgainer - Best trade 🥇\n/toploser - Worst trade 🥉\n/history - Last 5 trades ⏳\n/setalert <coin> <price> - Set price alert 🔔\n/settings - Adjust settings ⚙️\n/stats - PnL stats 💹\n/trend - Trend score 📈\n/risk - Risk level ⚠️\n/log - Last 10 logs 📝\n/livetoggle - Switch mode 🔄\n/dca - DCA status 📉\n/portfolio - Holdings 💰\n/chart - PnL chart 📉', { parse_mode: 'Markdown' });
   });
 
   bot.command('randomtrade', async (ctx) => {
@@ -52,7 +53,6 @@ function setupBot(botToken, chatId) {
     ctx.replyWithPhoto({ source: cardBuffer }, Markup.inlineKeyboard([
       [Markup.button.callback('Download PNG 📥', `download_${trade.id}`)]
     ]));
-    sendTradeAlert(chatId, bot.telegram, trade, 'New Trade');
   });
 
   bot.command('topgainer', async (ctx) => {
@@ -76,10 +76,10 @@ function setupBot(botToken, chatId) {
     ctx.reply(`*Last 5 Trades: 📜*\n${message || 'No trades yet.'}`, { parse_mode: 'Markdown' });
   });
 
-  bot.command('pricealert', (ctx) => {
+  bot.command('setalert', (ctx) => {
     if (ctx.chat.id.toString() !== chatId) return ctx.reply('Unauthorized 🚫');
     const args = ctx.message.text.split(' ').slice(1);
-    if (args.length !== 2) return ctx.reply('Usage: /pricealert <coin> <price> 🔔');
+    if (args.length !== 2) return ctx.reply('Usage: /setalert <coin> <price> 🔔');
     const [coin, price] = args;
     priceAlerts[coin] = parseFloat(price);
     ctx.reply(`*Price alert set for ${coin} at $${price}* 🔔💰`, { parse_mode: 'Markdown' });
@@ -130,7 +130,7 @@ function setupBot(botToken, chatId) {
   bot.action(/download_(.+)/, async (ctx) => {
     try {
       const tradeId = ctx.match[1];
-      const trade = trades.find(t => t.id === tradeId);
+      const trade = trades.find(t => t.id === tradeId) || insiderTrades.get(tradeId);
       if (trade) {
         const cardBuffer = await generateTradeCard(trade);
         ctx.replyWithPhoto({ source: cardBuffer }, { caption: `Download: ${trade.coin} PnL 📥` });
@@ -151,8 +151,8 @@ function setupBot(botToken, chatId) {
 
   bot.command('trend', (ctx) => {
     if (ctx.chat.id.toString() !== chatId) return ctx.reply('Unauthorized 🚫');
-    const trendScore = Math.floor(Math.random() * 101);
-    ctx.reply(`*Trend Score: ${trendScore}/100* 📈🔍\n${trendScore > 70 ? 'Bullish! 🔥' : trendScore > 40 ? 'Neutral 🌤️' : 'Bearish 📉'}`, { parse_mode: 'Markdown' });
+    const { trendScore, recommendation } = analyzeMarket();
+    ctx.reply(`*Trend Score: ${trendScore}/100* 📈🔍\n${recommendation}`, { parse_mode: 'Markdown' });
   });
 
   bot.command('risk', (ctx) => {
@@ -222,17 +222,81 @@ function setupBot(botToken, chatId) {
     }
   }
 
+  // Daily report at 23:59 CAT (adjust for your timezone if needed)
+  setInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 21 && now.getUTCMinutes() === 59) { // 23:59 CAT = 21:59 UTC
+      const dailyTrades = trades.filter(t => {
+        const tradeDate = new Date(t.timestamp);
+        return tradeDate.getUTCDate() === now.getUTCDate() && tradeDate.getUTCMonth() === now.getUTCMonth() && tradeDate.getUTCFullYear() === now.getUTCFullYear();
+      });
+      const totalDailyPnl = dailyTrades.reduce((sum, t) => sum + t.pnlUSD, 0);
+      const tradeSummary = dailyTrades.map(t => `*${t.coin}* - PnL: $${t.pnlUSD.toFixed(2)} (${t.pnlPercentage.toFixed(2)}%) 💸`).join('\n') || 'No trades today. 🌱';
+      const report = `*Hello Sadju! 🌟 Here’s what I did today: 📅*\n${tradeSummary}\n*Total Daily PnL: $${totalDailyPnl.toFixed(2)} 💰*\n*By Sadju AI Bot ✨🚀*`;
+      bot.telegram.sendMessage(chatId, report, { parse_mode: 'Markdown' });
+    }
+  }, 60000); // Check every minute
+
+  // Insider channel trading (simulated; requires real Telegram channel integration later)
+  bot.on('message', async (ctx) => {
+    if (ctx.chat.id.toString() !== chatId) return; // Restrict to authorized chat
+    const messageText = ctx.message.text || '';
+    const username = ctx.from.username;
+    if (insiderUsernames.includes(username) && messageText.includes('0x')) { // Detect coin address
+      const coin = messageText.split('0x')[0].trim() || 'INSIDER_COIN';
+      const entryPrice = getSolanaPrice(); // Simulated price
+      const trade = { id: Date.now().toString(), coin, entryPrice, exitPrice: null, pnlUSD: 0, pnlPercentage: 0, timestamp: new Date().toISOString() };
+      insiderTrades.set(trade.id, trade);
+      addTrade(trade);
+      ctx.reply(`*Insider Buy Alert! 🚨*\nCoin: ${coin} 🪙\nEntry: $${entryPrice.toFixed(4)} 📥\nTP: $${(entryPrice * 3).toFixed(4)} (3x) 🎯\nSL: $${(entryPrice * 0.9).toFixed(4)} (-10%) ⚠️`, { parse_mode: 'Markdown' });
+
+      // Simulate TP/SL (demo mode)
+      setTimeout(() => {
+        const currentPrice = getSolanaPrice();
+        if (currentPrice >= entryPrice * 3) {
+          trade.exitPrice = currentPrice;
+          trade.pnlUSD = (currentPrice - entryPrice) * 100;
+          trade.pnlPercentage = ((currentPrice - entryPrice) / entryPrice) * 100;
+          sendTradeAlert(chatId, bot.telegram, trade, 'Sell');
+          insiderTrades.delete(trade.id);
+        } else if (currentPrice <= entryPrice * 0.9) {
+          trade.exitPrice = currentPrice;
+          trade.pnlUSD = (currentPrice - entryPrice) * 100;
+          trade.pnlPercentage = ((currentPrice - entryPrice) / entryPrice) * 100;
+          sendTradeAlert(chatId, bot.telegram, trade, 'Sell');
+          insiderTrades.delete(trade.id);
+        }
+      }, 30000); // Check after 30 seconds (simulate market movement)
+    }
+  });
+
+  // Regular alerts with market analysis
   setInterval(() => {
     const now = Date.now();
     if (now - lastAlertTime >= 30000) {
-      const trade = getRandomTrade();
-      addTrade(trade);
-      const action = Math.random() > 0.66 ? 'Buy' : Math.random() > 0.33 ? 'Sell' : 'Hold';
-      sendTradeAlert(chatId, bot.telegram, trade, action);
-      fs.appendFile('trades.log', `${format(new Date(), 'yyyy-MM-dd HH:mm:ss')} - ${trade.coin} - ${action} - PnL: $${trade.pnlUSD}\n`, err => {
-        if (err) console.error('Log write failed:', err);
-      });
-      lastAlertTime = now;
+      try {
+        const trade = getRandomTrade();
+        addTrade(trade);
+        const action = Math.random() > 0.66 ? 'Buy' : Math.random() > 0.33 ? 'Sell' : 'Hold';
+        const { recommendation } = analyzeMarket();
+        sendTradeAlert(chatId, bot.telegram, trade, action);
+        fs.appendFile('trades.log', `${format(new Date(), 'yyyy-MM-dd HH:mm:ss')} - ${trade.coin} - ${action} - PnL: $${trade.pnlUSD}\n`, (err) => {
+          if (err) console.error('Log write failed:', err);
+        });
+
+        // Price alerts
+        for (const [coin, targetPrice] of Object.entries(priceAlerts)) {
+          const currentPrice = trade.entryPrice || getSolanaPrice();
+          if (currentPrice >= targetPrice) {
+            bot.telegram.sendMessage(chatId, `*Price Alert! 🔔*\n${coin} reached $${currentPrice} (Target: $${targetPrice}) 💡`, { parse_mode: 'Markdown' });
+            delete priceAlerts[coin];
+          }
+        }
+
+        lastAlertTime = now;
+      } catch (err) {
+        console.error('Interval error:', err);
+      }
     }
   }, 1000);
 
