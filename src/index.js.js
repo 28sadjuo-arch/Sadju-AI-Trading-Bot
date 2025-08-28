@@ -1,4 +1,5 @@
-require('dotenv').config(); // Load .env file
+require('dotenv').config();
+console.log('Token:', process.env.TELEGRAM_BOT_TOKEN);
 const express = require('express');
 const { setupBot } = require('./bot');
 
@@ -10,8 +11,13 @@ app.get('/', (req, res) => {
 });
 
 const bot = setupBot(process.env.TELEGRAM_BOT_TOKEN, process.env.CHAT_ID);
-bot.launch().then(() => {
-  console.log('Bot launched successfully!');
+bot.launch({
+  webhook: {
+    domain: 'https://bf708b7528a7.ngrok-free.app', // Replace with your ngrok URL from the console
+    port: process.env.PORT || 3000,
+  },
+}).then(() => {
+  console.log('Bot launched with webhook!');
 }).catch((err) => {
   console.error('Bot launch failed:', err);
   process.exit(1);
