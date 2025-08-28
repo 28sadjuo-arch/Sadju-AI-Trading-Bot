@@ -48,13 +48,6 @@ function setupBot(botToken, chatId) {
     process.exit(1);
   });
 
-  // Restart on unhandled errors
-  process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
-    bot.stop('Uncaught Exception');
-    setTimeout(() => bot.launch(), 5000);
-  });
-
   bot.start((ctx) => {
     if (ctx.chat.id.toString() !== chatId) return ctx.reply('Unauthorized 🚫');
     ctx.reply('*Welcome to Sadju AI Trading Bot v1.4! 🚀💼*\nEnhanced with daily reports, insider trades, and market analysis. Use /help for commands.', { parse_mode: 'Markdown' });
