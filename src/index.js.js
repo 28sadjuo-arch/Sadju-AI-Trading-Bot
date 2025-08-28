@@ -10,13 +10,8 @@ app.get('/', (req, res) => {
 });
 
 const bot = setupBot(process.env.TELEGRAM_BOT_TOKEN, process.env.CHAT_ID);
-bot.launch({
-  webhook: {
-    domain: `https://sadju-ai-bot.onrender.com`,
-    port: process.env.PORT || 3000,
-  },
-}).then(() => {
-  console.log('Bot launched with webhook!');
+bot.launch().then(() => {
+  console.log('Bot launched successfully!');
 }).catch((err) => {
   console.error('Bot launch failed:', err);
   process.exit(1);

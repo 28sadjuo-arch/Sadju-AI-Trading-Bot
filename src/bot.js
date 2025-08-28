@@ -13,7 +13,7 @@ function setupBot(botToken, chatId) {
   const slippageTolerance = parseFloat(process.env.SLIPPAGE_TOLERANCE) || 0.05;
   let lastAlertTime = 0;
   let profitTarget = 20;
-  const insiderUsernames = ['cryptoyeezuscalls', 'GeppettoDegen', 'Zinsgamble', 'YodaCallss', 'GabbensCalls']; // Replace with real usernames
+  const insiderUsernames = ['insider1', 'insider2']; // Replace with real usernames
   const insiderTrades = new Map();
 
   async function initializeBot() {
